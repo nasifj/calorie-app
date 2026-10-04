@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CalTrack</title>
+<style>
+:root{--bg:#f4f7f4;--c:#fff;--t:#1d2b22;--m:#6b7a70;--g:#2e9e5b;--r:#e0533d;--b:#dfe6e0}
+@media(prefers-color-scheme:dark){:root{--bg:#111815;--c:#1a2420;--t:#e8f0ea;--m:#8fa196;--b:#2a3830}}
+*{box-sizing:border-box}body{margin:0;font:15px system-ui,sans-serif;background:var(--bg);color:var(--t)}
+main{max-width:560px;margin:auto;padding:14px}
+.card{background:var(--c);border:1px solid var(--b);border-radius:14px;padding:14px;margin-bottom:12px}
+h1{font-size:20px;margin:6px 0 12px}h2{font-size:14px;margin:0 0 10px;color:var(--m);text-transform:uppercase;letter-spacing:.5px}
+input,select,button{font:inherit;padding:9px;border-radius:9px;border:1px solid var(--b);background:var(--bg);color:var(--t);width:100%}
+button{background:var(--g);color:#fff;border:0;cursor:pointer;font-weight:600}
+button.s{background:var(--bg);color:var(--t);border:1px solid var(--b)}button:disabled{opacity:.5}
+.row{display:flex;gap:8px;margin-bottom:8px}.row>*{flex:1}.row>.w{flex:2}
+.big{font-size:32px;font-weight:700}.m{color:var(--m);font-size:13px}
+.bar{height:10px;background:var(--b);border-radius:9px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--g);transition:width .3s}
+.item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--b)}
+.item button{width:auto;background:none;color:var(--r);padding:2px 8px}
+.nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.nav button{width:44px}
+.hist{display:flex;align-items:flex-end;gap:6px;height:80px}.hist div{flex:1;text-align:center;font-size:10px;color:var(--m)}
+.hist i{display:block;background:var(--g);border-radius:4px 4px 0 0;min-height:2px}
+.warn{color:var(--r);font-size:13px;margin-top:6px}
+</style></head><body><main>
+<h1>🥗 CalTrack</h1>
+
+<div class="nav"><button class="s" onclick="mv(-1)">‹</button><b id="dl"></b><button class="s" onclick="mv(1)">›</button></div>
+
+<div class="card">
+  <div class="m">Eaten</div>
+  <div><span class="big" id="tot">0</span> <span class="m">/ <span id="tg">—</span> kcal target</span></div>
+  <div class="bar"><i id="pb" style="width:0"></i></div>
+  <div class="m" id="rem"></div>
+</div>
+
+<div class="card"><h2>Add food</h2>
+  <div class="row"><input id="fn" class="w" placeholder="Food (e.g. 2 rotis with dal)" onkeydown="if(event.key==='Enter')ai()"><input id="fc" type="number" min="0" placeholder="kcal"></div>
+  <div class="row"><button class="s" id="ab" onclick="ai()">✨ Estimate with Gemini</button><button onclick="add()">Add</button></div>
+  <div class="m" id="am"></div>
+</div>
+
+<div class="card"><h2>Today's log</h2><div id="list"></div></div>
+<div class="card"><h2>Last 7 days</h2><div class="hist" id="hist"></div></div>
+
+<div class="card"><h2>Maintenance &amp; goal</h2>
+  <div class="row"><select id="sex"><option value="m">Male</option><option value="f">Female</option></select><input id="age" type="number" placeholder="Age"></div>
+  <div class="row"><input id="h" type="number" placeholder="Height cm"><input id="w" type="number" step=".1" placeholder="Weight kg"></div>
+  <div class="row"><select id="act">
+    <option value="1.2">Sedentary</option><option value="1.375">Light (1-3 days/wk)</option>
+    <option value="1.55">Moderate (3-5 days/wk)</option><option value="1.725">Very active (6-7)</option></select></div>
+  <div class="row"><input id="gk" type="number" step=".1" placeholder="Goal: kg to lose"><input id="gw" type="number" placeholder="In weeks"></div>
+  <button onclick="save()">Calculate &amp; save</button>
+  <div id="res" style="margin-top:10px"></div>
+</div>
+<p class="m" style="text-align:center">Estimates only. Data is stored in this browser.</p>
+</main>
+<script>
+const $=id=>document.getElementById(id),L=localStorage;
+const get=(k,d)=>{try{return JSON.parse(L[k])||d}catch{return d}};
+let log=get('log',{}),P=get('prof',{}),off=0;
+const key=()=>{const d=new Date();d.setDate(d.getDate()+off);return d.toLocaleDateString('en-CA')};
+const sv=()=>L.log=JSON.stringify(log);
+function mv(n){off=Math.min(0,off+n);render()}
+function calc(){
+  if(!P.w)return null;
+  const bmr=10*P.w+6.25*P.h-5*P.age+(P.sex==='m'?5:-161),mt=Math.round(bmr*P.act);
+  let def=0;if(P.gk&&P.gw)def=Math.round(P.gk*7700/(P.gw*7));
+  return{bmr:Math.round(bmr),mt,def,target:Math.max(0,mt-def)};
+}
+function add(){
+  const n=$('fn').value.trim(),c=Math.round(+$('fc').value);
+  if(!n||!(c>=0)||$('fc').value==='')return $('am').textContent='Enter a name and kcal.';
+  (log[key()]??=[]).push({n,c});sv();$('fn').value=$('fc').value='';$('am').textContent='';render();
+}
+function del(i){log[key()].splice(i,1);sv();render()}
+async function ai(){
+  const q=$('fn').value.trim();if(!q)return $('am').textContent='Type a food first.';
+  $('ab').disabled=true;$('am').textContent='Asking Gemini…';
+  try{
+    const r=await fetch('/.netlify/functions/gemini',{method:'POST',body:JSON.stringify({q})});
+    const d=await r.json();if(!r.ok)throw Error(d.error||'Failed');
+    $('fc').value=Math.round(d.kcal);$('am').textContent=`≈ ${Math.round(d.kcal)} kcal per ${d.serving||'serving'} (AI estimate — edit if needed, then Add)`;
+  }catch(e){$('am').textContent='Gemini error: '+e.message}
+  $('ab').disabled=false;
+}
+function save(){
+  P={sex:$('sex').value,age:+$('age').value,h:+$('h').value,w:+$('w').value,act:+$('act').value,gk:+$('gk').value,gw:+$('gw').value};
+  if(!P.age||!P.h||!P.w)return $('res').innerHTML='<span class="warn">Fill age, height and weight.</span>';
+  L.prof=JSON.stringify(P);render();
+}
+function render(){
+  const d=new Date();d.setDate(d.getDate()+off);
+  $('dl').textContent=off===0?'Today':d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+  const items=log[key()]||[],tot=items.reduce((a,x)=>a+x.c,0),r=calc();
+  $('tot').textContent=tot;
+  $('list').innerHTML=items.length?items.map((x,i)=>`<div class="item"><span>${x.n.replace(/</g,'&lt;')}</span><span>${x.c} kcal <button onclick="del(${i})">✕</button></span></div>`).join(''):'<div class="m">Nothing logged yet.</div>';
+  if(r){
+    $('tg').textContent=r.target;
+    $('pb').style.width=Math.min(100,tot/r.target*100)+'%';$('pb').style.background=tot>r.target?'var(--r)':'var(--g)';
+    const left=r.target-tot;$('rem').textContent=left>=0?`${left} kcal left`:`${-left} kcal over target`;
+    const wk=P.gk/P.gw,min=P.sex==='m'?1500:1200;let w='';
+    if(wk>1)w+='Goal is over 1 kg/week — aggressive. ';
+    if(r.target<min)w+=`Target is under ${min} kcal — consider a longer timeline.`;
+    $('res').innerHTML=`<div>Maintenance: <b>${r.mt} kcal/day</b> <span class="m">(BMR ${r.bmr})</span></div>`+
+      (r.def?`<div>Daily deficit needed: <b>${r.def} kcal</b></div><div>Daily target: <b>${r.target} kcal</b></div>`:'<div class="m">Add a goal to see your deficit.</div>')+
+      (w?`<div class="warn">${w}</div>`:'');
+  }else{$('tg').textContent='—';$('rem').textContent='Set up your profile below for a target.'}
+  const days=[...Array(7)].map((_,i)=>{const x=new Date();x.setDate(x.getDate()-6+i);const k=x.toLocaleDateString('en-CA');return{l:x.toLocaleDateString(undefined,{weekday:'narrow'}),v:(log[k]||[]).reduce((a,y)=>a+y.c,0)}});
+  const mx=Math.max(1,...days.map(x=>x.v),r?.target||0);
+  $('hist').innerHTML=days.map(x=>`<div>${x.v||''}<i style="height:${x.v/mx*60}px"></i>${x.l}</div>`).join('');
+}
+if(P.w){$('sex').value=P.sex;$('age').value=P.age;$('h').value=P.h;$('w').value=P.w;$('act').value=P.act;$('gk').value=P.gk||'';$('gw').value=P.gw||''}
+render();
+</script></body></html>
