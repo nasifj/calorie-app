@@ -62,6 +62,10 @@ button.s{background:var(--bg);color:var(--t);border:1px solid var(--b)}button:di
   <button onclick="save()">Calculate &amp; save</button>
   <div id="res" style="margin-top:10px"></div>
 </div>
+<div class="card"><h2>Sync across devices</h2>
+  <div class="row"><input id="sc" type="password" placeholder="Secret sync code (6+ chars)"><button onclick="conn()" style="flex:.6">Connect</button></div>
+  <div class="m" id="ss">Use the same code on every device. Keep it private — anyone with it can see your data.</div>
+</div>
 <p class="m" style="text-align:center">Estimates only. Data is stored in this browser.</p>
 </main>
 <script>
@@ -69,7 +73,7 @@ const $=id=>document.getElementById(id),L=localStorage;
 const get=(k,d)=>{try{return JSON.parse(L[k])||d}catch{return d}};
 let log=get('log',{}),P=get('prof',{}),off=0;
 const key=()=>{const d=new Date();d.setDate(d.getDate()+off);return d.toLocaleDateString('en-CA')};
-const sv=()=>L.log=JSON.stringify(log);
+const sv=()=>{L.log=JSON.stringify(log);touch()};
 function mv(n){off=Math.min(0,off+n);render()}
 function calc(){
   if(!P.w)return null;
@@ -96,7 +100,7 @@ async function ai(){
 function save(){
   P={sex:$('sex').value,age:+$('age').value,h:+$('h').value,w:+$('w').value,act:+$('act').value,gk:+$('gk').value,gw:+$('gw').value};
   if(!P.age||!P.h||!P.w)return $('res').innerHTML='<span class="warn">Fill age, height and weight.</span>';
-  L.prof=JSON.stringify(P);render();
+  L.prof=JSON.stringify(P);touch();render();
 }
 function render(){cal();
   const d=new Date();d.setDate(d.getDate()+off);
@@ -144,6 +148,21 @@ function cal(){
   }
   $('cal').innerHTML=h;
 }
-if(P.w){$('sex').value=P.sex;$('age').value=P.age;$('h').value=P.h;$('w').value=P.w;$('act').value=P.act;$('gk').value=P.gk||'';$('gw').value=P.gw||''}
-render();
+function fill(){if(P.w){$('sex').value=P.sex;$('age').value=P.age;$('h').value=P.h;$('w').value=P.w;$('act').value=P.act;$('gk').value=P.gk||'';$('gw').value=P.gw||''}}
+let tm,busy=false;
+const api=b=>fetch('/.netlify/functions/sync',{method:'POST',body:JSON.stringify({code:L.code,...b})}).then(r=>r.json());
+const st=t=>$('ss').textContent=t;
+function touch(){L.t=Date.now();if(L.code){clearTimeout(tm);tm=setTimeout(push,800)}}
+async function push(){try{const r=await api({data:{log,prof:P,t:+L.t||Date.now()}});st(r.ok?'☁️ Synced '+new Date().toLocaleTimeString():'Sync error: '+r.error)}catch{st('Offline — will sync on next change')}}
+async function pull(){
+  if(!L.code||busy)return;busy=true;st('Syncing…');
+  try{const r=await api({});if(r.error)throw Error(r.error);const d=r.data,lt=+L.t||0;
+    if(d&&d.t>lt){log=d.log||{};P=d.prof||{};L.log=JSON.stringify(log);L.prof=JSON.stringify(P);L.t=d.t;fill();render();st('☁️ Synced '+new Date().toLocaleTimeString())}
+    else await push()}
+  catch(e){st('Sync error: '+e.message)}busy=false;
+}
+function conn(){const c=$('sc').value.trim();if(c.length<6)return st('Code must be 6+ characters.');L.code=c;$('sc').value='';pull()}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)pull()});
+if(L.code)$('sc').placeholder='Connected ✓ (enter new code to change)';
+fill();render();pull();
 </script></body></html>
