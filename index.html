@@ -21,6 +21,12 @@ button.s{background:var(--bg);color:var(--t);border:1px solid var(--b)}button:di
 .hist{display:flex;align-items:flex-end;gap:6px;height:80px}.hist div{flex:1;text-align:center;font-size:10px;color:var(--m)}
 .hist i{display:block;background:var(--g);border-radius:4px 4px 0 0;min-height:2px}
 .warn{color:var(--r);font-size:13px;margin-top:6px}
+.tabs{display:flex;gap:8px;margin-bottom:10px}.tabs button{padding:6px}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.grid>div{text-align:center;font-size:10px;color:var(--m);border-radius:6px;padding:4px 0;min-height:44px}
+.grid .d{background:var(--bg);cursor:pointer}.grid .d b{display:block;font-size:12px;color:var(--t)}
+.pos{background:rgba(46,158,91,.28)!important}.neg{background:rgba(224,83,61,.28)!important}
+.mrow{display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--b);cursor:pointer}
 </style></head><body><main>
 <h1>🥗 CalTrack</h1>
 
@@ -42,6 +48,10 @@ button.s{background:var(--bg);color:var(--t);border:1px solid var(--b)}button:di
 <div class="card"><h2>Today's log</h2><div id="list"></div></div>
 <div class="card"><h2>Last 7 days</h2><div class="hist" id="hist"></div></div>
 
+<div class="card"><h2>Deficit calendar</h2>
+  <div class="tabs"><button class="s" onclick="cv='m';render()">Month</button><button class="s" onclick="cv='y';render()">Year</button></div>
+  <div id="cal"></div>
+</div>
 <div class="card"><h2>Maintenance &amp; goal</h2>
   <div class="row"><select id="sex"><option value="m">Male</option><option value="f">Female</option></select><input id="age" type="number" placeholder="Age"></div>
   <div class="row"><input id="h" type="number" placeholder="Height cm"><input id="w" type="number" step=".1" placeholder="Weight kg"></div>
@@ -88,7 +98,7 @@ function save(){
   if(!P.age||!P.h||!P.w)return $('res').innerHTML='<span class="warn">Fill age, height and weight.</span>';
   L.prof=JSON.stringify(P);render();
 }
-function render(){
+function render(){cal();
   const d=new Date();d.setDate(d.getDate()+off);
   $('dl').textContent=off===0?'Today':d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
   const items=log[key()]||[],tot=items.reduce((a,x)=>a+x.c,0),r=calc();
@@ -108,6 +118,31 @@ function render(){
   const days=[...Array(7)].map((_,i)=>{const x=new Date();x.setDate(x.getDate()-6+i);const k=x.toLocaleDateString('en-CA');return{l:x.toLocaleDateString(undefined,{weekday:'narrow'}),v:(log[k]||[]).reduce((a,y)=>a+y.c,0)}});
   const mx=Math.max(1,...days.map(x=>x.v),r?.target||0);
   $('hist').innerHTML=days.map(x=>`<div>${x.v||''}<i style="height:${x.v/mx*60}px"></i>${x.l}</div>`).join('');
+}
+let cm=new Date().getMonth(),cy=new Date().getFullYear(),cv='m';
+const pad=n=>String(n).padStart(2,'0'),fmt=n=>(n>0?'+':'')+n;
+function dd(k){const it=log[k],r=calc();return it&&it.length&&r?r.mt-it.reduce((a,x)=>a+x.c,0):null}
+function sm(p){let t=0,n=0;for(const k in log)if(k.startsWith(p)){const d=dd(k);if(d!==null){t+=d;n++}}return{t,n}}
+function sumTxt(x){return x.n?`<div style="margin:10px 0"><b>${x.t>=0?'Deficit':'Surplus'}: ${Math.abs(x.t)} kcal</b> <span class="m">≈ ${Math.abs(x.t/7700).toFixed(2)} kg ${x.t>=0?'lost':'gained'}<br>${x.n} days logged · avg ${fmt(Math.round(x.t/x.n))}/day</span></div>`:'<div class="m" style="margin:10px 0">No days logged.</div>'}
+function cn(n){if(cv==='y')cy+=n;else{cm+=n;if(cm>11){cm=0;cy++}if(cm<0){cm=11;cy--}}render()}
+function go(y,m,d){const t=new Date();t.setHours(0,0,0,0);const o=Math.round((new Date(y,m,d)-t)/864e5);if(o<=0){off=o;render();scrollTo(0,0)}}
+function cal(){
+  if(!calc()){$('cal').innerHTML='<div class="m">Fill in &amp; save your profile below first.</div>';return}
+  const mn=new Date(cy,cm,1).toLocaleDateString(undefined,{month:'long',year:'numeric'});
+  let h=`<div class="nav"><button class="s" onclick="cn(-1)">‹</button><b>${cv==='m'?mn:cy}</b><button class="s" onclick="cn(1)">›</button></div>`;
+  if(cv==='m'){
+    h+=sumTxt(sm(cy+'-'+pad(cm+1)))+'<div class="grid">'+'SMTWTFS'.split('').map(x=>`<div>${x}</div>`).join('');
+    const f=new Date(cy,cm,1).getDay(),n=new Date(cy,cm+1,0).getDate();
+    for(let i=0;i<f;i++)h+='<div></div>';
+    for(let d=1;d<=n;d++){const v=dd(`${cy}-${pad(cm+1)}-${pad(d)}`);
+      h+=`<div class="d ${v===null?'':v>=0?'pos':'neg'}" onclick="go(${cy},${cm},${d})"><b>${d}</b>${v===null?'':fmt(v)}</div>`}
+    h+='</div>';
+  }else{
+    h+=sumTxt(sm(cy+'-'));
+    for(let m=0;m<12;m++){const x=sm(cy+'-'+pad(m+1));
+      h+=`<div class="mrow" onclick="cm=${m};cv='m';render()"><span>${new Date(cy,m,1).toLocaleDateString(undefined,{month:'long'})}</span><span class="m">${x.n?`${x.n} days · `:''}<b style="color:${x.t>=0?'var(--g)':'var(--r)'}">${x.n?fmt(x.t):'—'}</b></span></div>`}
+  }
+  $('cal').innerHTML=h;
 }
 if(P.w){$('sex').value=P.sex;$('age').value=P.age;$('h').value=P.h;$('w').value=P.w;$('act').value=P.act;$('gk').value=P.gk||'';$('gw').value=P.gw||''}
 render();
