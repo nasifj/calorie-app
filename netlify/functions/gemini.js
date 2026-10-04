@@ -1,14 +1,13 @@
-// Keeps your Gemini key secret: set GEMINI_API_KEY in Netlify > Site settings > Environment variables
 exports.handler = async (e) => {
   try {
     const q = String(JSON.parse(e.body || "{}").q || "").slice(0, 100).trim();
     if (!q) return { statusCode: 400, body: JSON.stringify({ error: "Empty query" }) };
-    const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", {
+    const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
       body: JSON.stringify({
         contents: [{ parts: [{ text: `Estimate calories for: "${q}". If no quantity is given, assume one typical serving. Reply JSON only: {"name":string,"serving":string,"kcal":number}` }] }],
-        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 100, temperature: 0.2, thinkingConfig: { thinkingBudget: 0 } }
+        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 400, temperature: 0.2 }
       })
     });
     const d = await r.json();
